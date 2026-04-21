@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="com.obiscr.chatgpt.settings.EasyCodeState">
+    <option name="projectFiles" value="$PROJECT_DIR$/app/routers/search.py;C:/Users/jjbou/PycharmProjects/RustBaseScraper/app/services/openai_service.py;C:/Users/jjbou/PycharmProjects/RustBaseScraper/app/services/ranking_service.py;C:/Users/jjbou/PycharmProjects/RustBaseScraper/app/services/youtube_service.py;C:/Users/jjbou/PycharmProjects/RustBaseScraper/app/config.py;C:/Users/jjbou/PycharmProjects/RustBaseScraper/app/main.py;C:/Users/jjbou/PycharmProjects/RustBaseScraper/app/schemas.py;C:/Users/jjbou/PycharmProjects/RustBaseScraper/README.md" />
+  </component>
+</project>
