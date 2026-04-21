@@ -1,3 +1,4 @@
+import json
 from html import escape
 from typing import Annotated, List, Optional, Tuple
 
@@ -206,6 +207,9 @@ async def search_results_page(
             """
         )
 
+    raw_json = json.dumps(result.model_dump(), indent=2)
+    raw_json_html = escape(raw_json)
+
     notes_value = escape(notes or "")
     footprint_value = escape(footprint or "")
     team_size_value = escape(team_size or "")
@@ -266,7 +270,8 @@ async def search_results_page(
                 }}
 
                 .retry-panel,
-                .traits-panel {{
+                .traits-panel,
+                .json-panel {{
                     background: rgba(23, 26, 33, 0.95);
                     border: 1px solid var(--border);
                     border-radius: 18px;
@@ -275,7 +280,8 @@ async def search_results_page(
                     box-shadow: 0 12px 30px rgba(0, 0, 0, 0.22);
                 }}
 
-                .retry-title {{
+                .retry-title,
+                .json-title {{
                     margin: 0 0 14px;
                     font-size: 20px;
                 }}
@@ -525,6 +531,28 @@ async def search_results_page(
                     background: var(--accent-hover);
                 }}
 
+                .json-help {{
+                    color: var(--muted);
+                    margin-bottom: 12px;
+                    line-height: 1.5;
+                    font-size: 14px;
+                }}
+
+                .json-box {{
+                    width: 100%;
+                    min-height: 340px;
+                    border-radius: 12px;
+                    border: 1px solid var(--border);
+                    background: #0d1117;
+                    color: #d7e0ea;
+                    padding: 14px;
+                    font-family: Consolas, monospace;
+                    font-size: 13px;
+                    line-height: 1.5;
+                    white-space: pre-wrap;
+                    overflow: auto;
+                }}
+
                 @media (max-width: 900px) {{
                     .retry-grid,
                     .traits-grid {{
@@ -582,6 +610,14 @@ async def search_results_page(
 
                 <div class="results-grid">
                     {''.join(cards)}
+                </div>
+
+                <div class="json-panel">
+                    <h2 class="json-title">Raw JSON</h2>
+                    <div class="json-help">
+                        Copy this block when you want to inspect or share the exact backend output.
+                    </div>
+                    <pre class="json-box">{raw_json_html}</pre>
                 </div>
             </div>
         </body>

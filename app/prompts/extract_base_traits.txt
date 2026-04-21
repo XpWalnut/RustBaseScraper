@@ -25,26 +25,29 @@ Rules:
 6. Avoid stuffing too many feature words into a single query.
 7. Prefer concise queries that combine only the strongest signals.
 8. If the user provides hints like team size or notes, use them only when they help.
+9. Do NOT confidently infer an exact footprint from weak visual evidence.
+10. Only provide a specific footprint when it is visually obvious.
+11. If footprint is not visually obvious, set footprint_guess to "unknown" and footprint_tags to [].
+12. Focus more on easy visual traits than exact topology.
 
-You may describe non-basic footprints.
-Examples:
-- 2x2
-- 2x2 with front triangle
-- 2x2 with side triangles
-- 2x2 with double triangle side
-- square core with triangle wing
-- square core with front triangle and side double triangle
-- offset bunker core
-- hex core
-- circle core with triangle wings
+Prioritize extracting these easier visual traits:
+- bunker
+- roof_bunker
+- shooting_floor
+- wide_gaps
+- honeycomb
+- peekdowns
+- open_core
+- compound
+- offset
 
 footprint_guess guidance:
 - Use a short human-readable description.
 - Keep it concise.
-- If the exact footprint is unclear, still describe the likely shape at a high level.
+- Only be specific if the screenshot strongly supports it.
 - Good examples:
+  - "2x2"
   - "2x2 with side triangles"
-  - "square core with front triangle"
   - "offset bunker core"
   - "hex core"
   - "unknown"
@@ -64,8 +67,8 @@ footprint_tags guidance:
   - circle
   - shell
   - wing
-- Prefer 1 to 5 tags.
-- Do not invent very niche tags unless clearly visible.
+- Prefer 0 to 4 tags.
+- If uncertain, return [].
 
 footprint_complexity guidance:
 - allowed values:
@@ -86,6 +89,11 @@ Allowed feature vocabulary when possible:
 - compound
 - offset
 
+Allowed roof_shapes vocabulary when possible:
+- peaked
+- flat
+- mixed
+
 Allowed stage vocabulary when possible:
 - starter
 - midgame
@@ -96,30 +104,28 @@ Query generation rules:
 - Make the first query the strongest likely tutorial search.
 - Keep each query focused.
 - Prefer patterns like:
-  - "rust 2x2 bunker base tutorial"
-  - "rust duo bunker base tutorial"
+  - "rust bunker base tutorial"
   - "rust roof bunker base tutorial"
   - "rust shooting floor bunker tutorial"
   - "rust wide gaps bunker tutorial"
-  - "rust 2x2 triangle bunker tutorial"
-  - "rust offset bunker base tutorial"
+  - "rust duo bunker base tutorial"
 - Do not generate long keyword piles.
 - Do not include more than 3 major traits in one query.
 - If footprint is unknown, use queries that do not depend on a footprint.
 - If the image strongly suggests a bunker, at least one query must include "bunker".
 - If the image strongly suggests a shooting floor, at least one query should include "shooting floor".
 - If the image strongly suggests wide gaps, at least one query should include "wide gaps".
-- If footprint tags include triangle structure, at least one query should include "triangle".
-- If footprint tags include offset, at least one query should include "offset".
-- If footprint tags include hex, at least one query should include "hex".
+- If footprint tags include triangle structure, at least one query may include "triangle".
+- If footprint tags include offset, at least one query may include "offset".
+- If footprint tags include hex, at least one query may include "hex".
 
 Good query examples:
-- rust 2x2 bunker base tutorial
+- rust bunker base tutorial
 - rust duo bunker base tutorial
 - rust roof bunker base tutorial
 - rust bunker shooting floor tutorial
 - rust wide gaps bunker tutorial
-- rust 2x2 triangle bunker tutorial
+- rust 2x2 bunker base tutorial
 - rust offset bunker base tutorial
 
 Bad query examples:
