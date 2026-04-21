@@ -6,7 +6,7 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from fastapi.responses import HTMLResponse
 
 from app.config import settings
-from app.schemas import SearchResponse
+from app.schemas import BaseTraits, SearchResponse
 from app.services.mock_traits_service import MockTraitsService
 from app.services.openai_service import OpenAIService
 from app.services.ranking_service import RankingService
@@ -14,49 +14,36 @@ from app.services.youtube_service import YouTubeService
 
 router = APIRouter()
 
-traits_service = MockTraitsService() if settings.use_mock_traits else OpenAIService()
+trait_helper = MockTraitsService()
+traits_service = trait_helper if settings.use_mock_traits else OpenAIService()
 youtube_service = YouTubeService()
 ranking_service = RankingService()
 
+FEATURE_OPTIONS = [
+    ("bunker", "Bunker"),
+    ("roof_bunker", "Roof Bunker"),
+    ("shooting_floor", "Shooting Floor"),
+    ("wide_gaps", "Wide Gaps"),
+    ("peekdowns", "Peekdowns"),
+    ("open_core", "Open Core"),
+    ("offset", "Offset"),
+    ("pixel_gap", "Pixel Gap"),
+    ("shell", "Shell"),
+    ("high_external_walls", "High External Wood Walls"),
+    ("disconnectable_tcs", "Disconnectable TCs"),
+    ("china_wall", "China Wall"),
+    ("multi_tc", "Multi TC"),
+    ("wide_peeks", "Wide Peeks"),
+    ("jump_ups", "Jump Ups"),
+    ("furnace_base", "Furnace Base"),
+]
 
-@router.post("/search", response_model=SearchResponse)
-async def search_base_tutorials(
-    screenshots: Annotated[List[UploadFile], File(...)],
-    footprint: Annotated[Optional[str], Form()] = None,
-    team_size: Annotated[Optional[str], Form()] = None,
-    notes: Annotated[Optional[str], Form()] = None,
-) -> SearchResponse:
-    if not screenshots:
-        raise HTTPException(status_code=400, detail="At least one screenshot is required.")
 
-    print("\n=== New /api/search request ===")
-    print(f"screenshots_received={len(screenshots)}")
-    print(f"footprint={footprint}")
-    print(f"team_size={team_size}")
-    print(f"notes={notes}")
-    print(f"use_mock_traits={settings.use_mock_traits}")
-    print(f"openai_model={settings.openai_model}")
-    print(f"max_images_for_trait_extraction={settings.max_images_for_trait_extraction}")
-
-    file_payloads: List[Tuple[bytes, str]] = []
-    for shot in screenshots[:6]:
-        content = await shot.read()
-        mime_type = shot.content_type or "image/png"
-        file_payloads.append((content, mime_type))
-
-    try:
-        traits = traits_service.extract_base_traits(
-            files=file_payloads,
-            footprint=footprint,
-            team_size=team_size,
-            notes=notes,
-        )
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Trait extraction failed: {e}")
-
+def _run_candidate_search(traits: BaseTraits) -> SearchResponse:
     print(f"footprint_guess={traits.footprint_guess}")
     print(f"footprint_tags={traits.footprint_tags}")
     print(f"footprint_complexity={traits.footprint_complexity}")
+    print(f"features={traits.features}")
 
     print("generated_queries:")
     for index, query in enumerate(traits.generated_queries[: settings.max_search_queries], start=1):
@@ -86,20 +73,12 @@ async def search_base_tutorials(
     return SearchResponse(extracted_traits=traits, matches=ranked)
 
 
-@router.post("/results", response_class=HTMLResponse)
-async def search_results_page(
-    screenshots: Annotated[List[UploadFile], File(...)],
-    footprint: Annotated[Optional[str], Form()] = None,
-    team_size: Annotated[Optional[str], Form()] = None,
-    notes: Annotated[Optional[str], Form()] = None,
+def _render_results_page(
+    result: SearchResponse,
+    footprint: Optional[str],
+    team_size: Optional[str],
+    notes: Optional[str],
 ) -> HTMLResponse:
-    result = await search_base_tutorials(
-        screenshots=screenshots,
-        footprint=footprint,
-        team_size=team_size,
-        notes=notes,
-    )
-
     def badge_for_index(index: int) -> str:
         if index == 0:
             return '<span class="badge badge-gold">Best Match</span>'
@@ -112,6 +91,20 @@ async def search_results_page(
     def score_percent(score: float) -> int:
         capped = max(0.0, min(score, 1.2))
         return int((capped / 1.2) * 100)
+
+    def render_feature_checkboxes(selected_features: List[str]) -> str:
+        boxes = []
+        for value, label in FEATURE_OPTIONS:
+            checked = "checked" if value in selected_features else ""
+            boxes.append(
+                f"""
+                <label class="feature-chip">
+                    <input type="checkbox" name="selected_features" value="{escape(value)}" {checked}>
+                    <span>{escape(label)}</span>
+                </label>
+                """
+            )
+        return "".join(boxes)
 
     features = ", ".join(result.extracted_traits.features) if result.extracted_traits.features else "None"
     queries = " | ".join(result.extracted_traits.generated_queries[: settings.max_search_queries])
@@ -213,6 +206,8 @@ async def search_results_page(
     notes_value = escape(notes or "")
     footprint_value = escape(footprint or "")
     team_size_value = escape(team_size or "")
+    extracted_footprint_value = escape(result.extracted_traits.footprint_guess or "")
+    extracted_team_size_value = escape(team_size or "")
 
     html = f"""
     <html>
@@ -271,7 +266,8 @@ async def search_results_page(
 
                 .retry-panel,
                 .traits-panel,
-                .json-panel {{
+                .json-panel,
+                .editor-panel {{
                     background: rgba(23, 26, 33, 0.95);
                     border: 1px solid var(--border);
                     border-radius: 18px;
@@ -281,18 +277,21 @@ async def search_results_page(
                 }}
 
                 .retry-title,
-                .json-title {{
+                .json-title,
+                .editor-title {{
                     margin: 0 0 14px;
                     font-size: 20px;
                 }}
 
-                .retry-grid {{
+                .retry-grid,
+                .editor-grid {{
                     display: grid;
                     grid-template-columns: 1fr 1fr 1fr;
                     gap: 12px;
                 }}
 
-                .retry-grid .full {{
+                .retry-grid .full,
+                .editor-grid .full {{
                     grid-column: 1 / -1;
                 }}
 
@@ -327,6 +326,37 @@ async def search_results_page(
 
                 .submit-btn:hover {{
                     background: var(--accent-hover);
+                }}
+
+                .editor-help,
+                .json-help {{
+                    color: var(--muted);
+                    margin-bottom: 12px;
+                    line-height: 1.5;
+                    font-size: 14px;
+                }}
+
+                .feature-chip-grid {{
+                    display: flex;
+                    flex-wrap: wrap;
+                    gap: 10px;
+                }}
+
+                .feature-chip {{
+                    display: inline-flex;
+                    align-items: center;
+                    gap: 8px;
+                    padding: 10px 12px;
+                    border-radius: 999px;
+                    background: rgba(29, 34, 48, 0.9);
+                    border: 1px solid var(--border);
+                    cursor: pointer;
+                    margin-bottom: 0;
+                }}
+
+                .feature-chip input {{
+                    width: auto;
+                    margin: 0;
                 }}
 
                 .traits-grid {{
@@ -531,13 +561,6 @@ async def search_results_page(
                     background: var(--accent-hover);
                 }}
 
-                .json-help {{
-                    color: var(--muted);
-                    margin-bottom: 12px;
-                    line-height: 1.5;
-                    font-size: 14px;
-                }}
-
                 .json-box {{
                     width: 100%;
                     min-height: 340px;
@@ -555,6 +578,7 @@ async def search_results_page(
 
                 @media (max-width: 900px) {{
                     .retry-grid,
+                    .editor-grid,
                     .traits-grid {{
                         grid-template-columns: 1fr;
                     }}
@@ -582,7 +606,7 @@ async def search_results_page(
                 </div>
 
                 <div class="retry-panel">
-                    <h2 class="retry-title">Try another search</h2>
+                    <h2 class="retry-title">Try another screenshot search</h2>
                     <form action="/api/results" method="post" enctype="multipart/form-data">
                         <div class="retry-grid">
                             <div class="full">
@@ -606,6 +630,36 @@ async def search_results_page(
                     </form>
                 </div>
 
+                <div class="editor-panel">
+                    <h2 class="editor-title">Detected features editor</h2>
+                    <div class="editor-help">
+                        Adjust the detected footprint and high-signal Rust features, then rerun the search without uploading screenshots again.
+                    </div>
+                    <form action="/api/refine" method="post">
+                        <div class="editor-grid">
+                            <div>
+                                <label for="editor_footprint">Footprint</label>
+                                <input id="editor_footprint" name="footprint" type="text" value="{extracted_footprint_value}" placeholder="2x2">
+                            </div>
+                            <div>
+                                <label for="editor_team_size">Team Size</label>
+                                <input id="editor_team_size" name="team_size" type="text" value="{extracted_team_size_value}" placeholder="duo">
+                            </div>
+                            <div class="full">
+                                <label for="editor_notes">Notes</label>
+                                <input id="editor_notes" name="notes" type="text" value="{notes_value}" placeholder="roof bunker, china wall, disconnectable tcs">
+                            </div>
+                            <div class="full">
+                                <label>Detected Features</label>
+                                <div class="feature-chip-grid">
+                                    {render_feature_checkboxes(result.extracted_traits.features)}
+                                </div>
+                            </div>
+                        </div>
+                        <button class="submit-btn" type="submit">Rerun with Selected Features</button>
+                    </form>
+                </div>
+
                 {trait_html}
 
                 <div class="results-grid">
@@ -625,3 +679,86 @@ async def search_results_page(
     """
 
     return HTMLResponse(content=html)
+
+
+@router.post("/search", response_model=SearchResponse)
+async def search_base_tutorials(
+    screenshots: Annotated[List[UploadFile], File(...)],
+    footprint: Annotated[Optional[str], Form()] = None,
+    team_size: Annotated[Optional[str], Form()] = None,
+    notes: Annotated[Optional[str], Form()] = None,
+) -> SearchResponse:
+    if not screenshots:
+        raise HTTPException(status_code=400, detail="At least one screenshot is required.")
+
+    print("\n=== New /api/search request ===")
+    print(f"screenshots_received={len(screenshots)}")
+    print(f"footprint={footprint}")
+    print(f"team_size={team_size}")
+    print(f"notes={notes}")
+    print(f"use_mock_traits={settings.use_mock_traits}")
+    print(f"openai_model={settings.openai_model}")
+    print(f"max_images_for_trait_extraction={settings.max_images_for_trait_extraction}")
+
+    file_payloads: List[Tuple[bytes, str]] = []
+    for shot in screenshots[:6]:
+        content = await shot.read()
+        mime_type = shot.content_type or "image/png"
+        file_payloads.append((content, mime_type))
+
+    try:
+        traits = traits_service.extract_base_traits(
+            files=file_payloads,
+            footprint=footprint,
+            team_size=team_size,
+            notes=notes,
+        )
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Trait extraction failed: {e}")
+
+    return _run_candidate_search(traits)
+
+
+@router.post("/refine", response_class=HTMLResponse)
+async def refine_results_page(
+    footprint: Annotated[Optional[str], Form()] = None,
+    team_size: Annotated[Optional[str], Form()] = None,
+    notes: Annotated[Optional[str], Form()] = None,
+    selected_features: Annotated[Optional[List[str]], Form()] = None,
+) -> HTMLResponse:
+    print("\n=== New /api/refine request ===")
+    print(f"footprint={footprint}")
+    print(f"team_size={team_size}")
+    print(f"notes={notes}")
+    print(f"selected_features={selected_features or []}")
+
+    traits = trait_helper.build_traits_from_overrides(
+        footprint=footprint,
+        team_size=team_size,
+        notes=notes,
+        selected_features=selected_features or [],
+        floors_visible=None,
+        roof_shapes=[],
+        confidence=0.5,
+        reasoning_summary="Traits were refined using user-edited footprint and detected feature selections.",
+    )
+
+    result = _run_candidate_search(traits)
+    return _render_results_page(result, footprint=footprint, team_size=team_size, notes=notes)
+
+
+@router.post("/results", response_class=HTMLResponse)
+async def search_results_page(
+    screenshots: Annotated[List[UploadFile], File(...)],
+    footprint: Annotated[Optional[str], Form()] = None,
+    team_size: Annotated[Optional[str], Form()] = None,
+    notes: Annotated[Optional[str], Form()] = None,
+) -> HTMLResponse:
+    result = await search_base_tutorials(
+        screenshots=screenshots,
+        footprint=footprint,
+        team_size=team_size,
+        notes=notes,
+    )
+
+    return _render_results_page(result, footprint=footprint, team_size=team_size, notes=notes)
