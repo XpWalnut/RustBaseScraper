@@ -7,6 +7,7 @@ from fastapi.responses import HTMLResponse
 
 from app.config import settings
 from app.schemas import BaseTraits, SearchResponse
+from app.services.evaluation_service import EvaluationService
 from app.services.mock_traits_service import MockTraitsService
 from app.services.openai_service import OpenAIService
 from app.services.ranking_service import RankingService
@@ -18,6 +19,7 @@ trait_helper = MockTraitsService()
 traits_service = trait_helper if settings.use_mock_traits else OpenAIService()
 youtube_service = YouTubeService()
 ranking_service = RankingService()
+evaluation_service = EvaluationService()
 
 FEATURE_OPTIONS = [
     ("bunker", "Bunker"),
@@ -78,6 +80,7 @@ def _render_results_page(
     footprint: Optional[str],
     team_size: Optional[str],
     notes: Optional[str],
+    evaluation_message: Optional[str] = None,
 ) -> HTMLResponse:
     def badge_for_index(index: int) -> str:
         if index == 0:
@@ -209,6 +212,14 @@ def _render_results_page(
     extracted_footprint_value = escape(result.extracted_traits.footprint_guess or "")
     extracted_team_size_value = escape(team_size or "")
 
+    evaluation_banner = ""
+    if evaluation_message:
+        evaluation_banner = f"""
+        <div class="eval-banner">
+            {escape(evaluation_message)}
+        </div>
+        """
+
     html = f"""
     <html>
         <head>
@@ -227,6 +238,9 @@ def _render_results_page(
                     --gold: #f5c451;
                     --silver: #b7c3d7;
                     --bronze: #d6935b;
+                    --success-bg: #14301f;
+                    --success-border: #28553a;
+                    --success-text: #c8f4d7;
                 }}
 
                 * {{ box-sizing: border-box; }}
@@ -264,10 +278,21 @@ def _render_results_page(
                     font-weight: 700;
                 }}
 
+                .eval-banner {{
+                    background: var(--success-bg);
+                    border: 1px solid var(--success-border);
+                    color: var(--success-text);
+                    border-radius: 14px;
+                    padding: 14px 16px;
+                    margin-bottom: 20px;
+                    font-weight: 700;
+                }}
+
                 .retry-panel,
                 .traits-panel,
                 .json-panel,
-                .editor-panel {{
+                .editor-panel,
+                .answer-panel {{
                     background: rgba(23, 26, 33, 0.95);
                     border: 1px solid var(--border);
                     border-radius: 18px;
@@ -278,20 +303,23 @@ def _render_results_page(
 
                 .retry-title,
                 .json-title,
-                .editor-title {{
+                .editor-title,
+                .answer-title {{
                     margin: 0 0 14px;
                     font-size: 20px;
                 }}
 
                 .retry-grid,
-                .editor-grid {{
+                .editor-grid,
+                .answer-grid {{
                     display: grid;
                     grid-template-columns: 1fr 1fr 1fr;
                     gap: 12px;
                 }}
 
                 .retry-grid .full,
-                .editor-grid .full {{
+                .editor-grid .full,
+                .answer-grid .full {{
                     grid-column: 1 / -1;
                 }}
 
@@ -329,7 +357,8 @@ def _render_results_page(
                 }}
 
                 .editor-help,
-                .json-help {{
+                .json-help,
+                .answer-help {{
                     color: var(--muted);
                     margin-bottom: 12px;
                     line-height: 1.5;
@@ -579,6 +608,7 @@ def _render_results_page(
                 @media (max-width: 900px) {{
                     .retry-grid,
                     .editor-grid,
+                    .answer-grid,
                     .traits-grid {{
                         grid-template-columns: 1fr;
                     }}
@@ -605,6 +635,8 @@ def _render_results_page(
                     <a class="back-link" href="/">← Back to search</a>
                 </div>
 
+                {evaluation_banner}
+
                 <div class="retry-panel">
                     <h2 class="retry-title">Try another screenshot search</h2>
                     <form action="/api/results" method="post" enctype="multipart/form-data">
@@ -627,6 +659,39 @@ def _render_results_page(
                             </div>
                         </div>
                         <button class="submit-btn" type="submit">Run Search Again</button>
+                    </form>
+                </div>
+
+                <div class="answer-panel">
+                    <h2 class="answer-title">Log the correct answer</h2>
+                    <div class="answer-help">
+                        Paste the real source video and optional notes. This will be stored locally and used to improve ranking and query generation later.
+                    </div>
+                    <form action="/api/evaluate" method="post">
+                        <input type="hidden" name="result_json" value='{escape(json.dumps(result.model_dump()))}'>
+                        <div class="answer-grid">
+                            <div class="full">
+                                <label for="expected_video_url">Correct YouTube URL</label>
+                                <input id="expected_video_url" name="expected_video_url" type="text" placeholder="https://www.youtube.com/watch?v=...">
+                            </div>
+                            <div>
+                                <label for="actual_footprint">Actual Footprint</label>
+                                <input id="actual_footprint" name="actual_footprint" type="text" placeholder="2x2 with side triangles">
+                            </div>
+                            <div class="full">
+                                <label for="actual_features">Actual Features</label>
+                                <input id="actual_features" name="actual_features" type="text" placeholder="roof bunker, wide gaps, shooting floor">
+                            </div>
+                            <div class="full">
+                                <label for="closeness_note">How close were the results?</label>
+                                <input id="closeness_note" name="closeness_note" type="text" placeholder="top result was not close">
+                            </div>
+                            <div class="full">
+                                <label for="user_notes_eval">Extra Notes</label>
+                                <input id="user_notes_eval" name="user_notes_eval" type="text" placeholder="Anything else worth remembering about this miss">
+                            </div>
+                        </div>
+                        <button class="submit-btn" type="submit">Save Evaluation</button>
                     </form>
                 </div>
 
@@ -745,6 +810,55 @@ async def refine_results_page(
 
     result = _run_candidate_search(traits)
     return _render_results_page(result, footprint=footprint, team_size=team_size, notes=notes)
+
+
+@router.post("/evaluate", response_class=HTMLResponse)
+async def evaluate_results(
+    result_json: Annotated[str, Form(...)],
+    expected_video_url: Annotated[str, Form(...)],
+    actual_footprint: Annotated[Optional[str], Form()] = None,
+    actual_features: Annotated[Optional[str], Form()] = None,
+    closeness_note: Annotated[Optional[str], Form()] = None,
+    user_notes_eval: Annotated[Optional[str], Form()] = None,
+) -> HTMLResponse:
+    try:
+        result = SearchResponse.model_validate(json.loads(result_json))
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Could not parse result JSON: {e}")
+
+    parsed_actual_features = []
+    if actual_features:
+        parsed_actual_features = [item.strip() for item in actual_features.split(",") if item.strip()]
+
+    record = evaluation_service.save_evaluation(
+        result=result,
+        expected_video_url=expected_video_url,
+        actual_footprint=actual_footprint,
+        actual_features=parsed_actual_features,
+        closeness_note=closeness_note,
+        user_notes=user_notes_eval,
+    )
+
+    expected_video_id = record.get("expected_video_id")
+    expected_rank = record.get("expected_rank_in_results")
+
+    if expected_video_id and expected_rank:
+        message = f"Saved evaluation. Expected video {expected_video_id} was found at rank #{expected_rank}."
+    elif expected_video_id:
+        message = f"Saved evaluation. Expected video {expected_video_id} was not found in the current top results."
+    else:
+        message = "Saved evaluation, but the expected YouTube URL could not be parsed into a video ID."
+
+    print("\n=== Evaluation saved ===")
+    print(message)
+
+    return _render_results_page(
+        result=result,
+        footprint=result.extracted_traits.footprint_guess,
+        team_size=None,
+        notes=None,
+        evaluation_message=message,
+    )
 
 
 @router.post("/results", response_class=HTMLResponse)
