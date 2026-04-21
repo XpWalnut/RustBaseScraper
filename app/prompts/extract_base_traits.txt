@@ -29,17 +29,32 @@ Rules:
 10. Only provide a specific footprint when it is visually obvious.
 11. If footprint is not visually obvious, set footprint_guess to "unknown" and footprint_tags to [].
 12. Focus more on easy visual traits than exact topology.
+13. Do NOT assume a bunker unless it is visually supported or explicitly hinted.
+14. Do NOT insert bunker into queries unless bunker is actually supported by the evidence.
+15. Neutral "base tutorial" queries are better than wrong bunker queries.
+16. Avoid overly generic Rust traits that do not narrow search much.
 
-Prioritize extracting these easier visual traits:
+Prioritize extracting these more useful traits:
 - bunker
 - roof_bunker
 - shooting_floor
 - wide_gaps
-- honeycomb
 - peekdowns
 - open_core
-- compound
 - offset
+- pixel_gap
+- shell
+- high_external_walls
+- disconnectable_tcs
+- china_wall
+- multi_tc
+- wide_peeks
+- jump_ups
+- furnace_base
+
+Do NOT use these unless they are unusually important and clearly visible:
+- honeycomb
+- compound
 
 footprint_guess guidance:
 - Use a short human-readable description.
@@ -78,16 +93,22 @@ footprint_complexity guidance:
   - unknown
 
 Allowed feature vocabulary when possible:
-- honeycomb
+- bunker
+- roof_bunker
 - shooting_floor
 - wide_gaps
-- bunker
-- pixel_gap
 - peekdowns
 - open_core
-- roof_bunker
-- compound
 - offset
+- pixel_gap
+- shell
+- high_external_walls
+- disconnectable_tcs
+- china_wall
+- multi_tc
+- wide_peeks
+- jump_ups
+- furnace_base
 
 Allowed roof_shapes vocabulary when possible:
 - peaked
@@ -103,34 +124,41 @@ Allowed stage vocabulary when possible:
 Query generation rules:
 - Make the first query the strongest likely tutorial search.
 - Keep each query focused.
+- Prefer neutral queries unless strong evidence supports a more specific trait.
 - Prefer patterns like:
-  - "rust bunker base tutorial"
+  - "rust 2x2 base tutorial"
+  - "rust duo base tutorial"
   - "rust roof bunker base tutorial"
-  - "rust shooting floor bunker tutorial"
-  - "rust wide gaps bunker tutorial"
-  - "rust duo bunker base tutorial"
+  - "rust shooting floor base tutorial"
+  - "rust wide gaps base tutorial"
+  - "rust china wall base tutorial"
+  - "rust disconnectable tcs tutorial"
 - Do not generate long keyword piles.
 - Do not include more than 3 major traits in one query.
 - If footprint is unknown, use queries that do not depend on a footprint.
-- If the image strongly suggests a bunker, at least one query must include "bunker".
+- Only include "bunker" in a query when bunker is clearly supported.
 - If the image strongly suggests a shooting floor, at least one query should include "shooting floor".
 - If the image strongly suggests wide gaps, at least one query should include "wide gaps".
-- If footprint tags include triangle structure, at least one query may include "triangle".
-- If footprint tags include offset, at least one query may include "offset".
-- If footprint tags include hex, at least one query may include "hex".
+- If the image strongly suggests china wall, at least one query should include "china wall".
+- If the image strongly suggests disconnectable TCs, at least one query should include "disconnectable tcs".
+- If the image strongly suggests high external walls, at least one query should include "high external wood walls".
 
 Good query examples:
-- rust bunker base tutorial
-- rust duo bunker base tutorial
+- rust 2x2 base tutorial
+- rust duo base tutorial
 - rust roof bunker base tutorial
-- rust bunker shooting floor tutorial
-- rust wide gaps bunker tutorial
+- rust shooting floor base tutorial
+- rust wide gaps base tutorial
+- rust china wall base tutorial
+- rust disconnectable tcs tutorial
 - rust 2x2 bunker base tutorial
-- rust offset bunker base tutorial
 
 Bad query examples:
 - rust duo base bunker honeycomb roof shooting floor tutorial
 - rust base design roof entrance honeycomb bunker shooting floor
 - rust everything base design explained
+- rust bunker base tutorial   <-- bad if bunker is not actually supported
+- rust honeycomb base tutorial  <-- too generic unless unusually relevant
+- rust compound base tutorial   <-- too vague compared with specific externals
 
 Return strict JSON only. No markdown. No commentary outside the JSON.
